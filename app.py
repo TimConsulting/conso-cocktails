@@ -93,7 +93,7 @@ if selection:
                 lignes_c = df_rec[df_rec['Cocktail'] == c]
                 composition_txt = ""
                 for _, r in lignes_c.iterrows():
-                    composition_txt += f"- {r['Quantité']} {r['Unité']} de {r['Ingrédient']}\n"
+                    composition_txt += f"- {r['Quantité']} {r['Unité']} {r['Ingrédient']}\n"
                 st.info(composition_txt)
                 
                 st.write("---")
