@@ -3,7 +3,7 @@ import pandas as pd
 import math
 
 # --- CONFIGURATION ---
-st.set_page_config(page_title="Cocktail Planner Multi", layout="centered")
+st.set_page_config(page_title="Cocktail Planner Pro", layout="centered")
 
 # --- CHARGEMENT ---
 URL_RECETTES = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1qyomUyOvg9AU5gHgTTrufofoCT0fgOgJYA4xRJ5y5cHGnMDksjLOIvLF7y-m6UfoC_2kzTsotTal/pub?gid=0&single=true&output=csv"
@@ -16,83 +16,89 @@ def load_data():
 df_rec, df_form = load_data()
 
 # --- INTERFACE ---
-st.title("🍹 Planning de l'Événement")
+st.title("🍹 Cocktail Planner")
 
-# 1. PARAMÈTRES GLOBAUX
+# 1. PARAMÈTRES
 col1, col2 = st.columns(2)
 with col1:
-    pax_total = st.number_input("Nombre d'invités total", min_value=1, value=50, step=5)
+    pax_total = st.number_input("Nombre d'invités", min_value=1, value=50, step=5)
 with col2:
-    ratio = st.number_input("Cocktails par personne", min_value=0.5, value=1.5, step=0.5)
+    ratio = st.number_input("Verres / personne", min_value=0.5, value=1.5, step=0.5)
 
-total_verres_attendus = pax_total * ratio
-st.info(f"Prévision totale : **{int(total_verres_attendus)} verres** à servir.")
-
-# 2. CHOIX DES COCKTAILS
+total_verres = pax_total * ratio
 options = sorted(df_rec['Cocktail'].unique())
-selection_cocktails = st.multiselect("Quels cocktails proposez-vous ?", options)
+selection = st.multiselect("Cocktails à la carte", options)
 
-if selection_cocktails:
-    st.divider()
+if selection:
+    verres_par_type = total_verres / len(selection)
     
-    # Calcul de la part de chaque cocktail (répartition égale)
-    nb_types = len(selection_cocktails)
-    verres_par_type = total_verres_attendus / nb_types
-    
-    # AGGRÉGATION DES INGRÉDIENTS
-    # On crée un dictionnaire pour cumuler les besoins si un ingrédient est dans plusieurs cocktails
-    cumul_besoins = {} # { 'Nom' : {'quantite': X, 'unite': Y} }
+    # Création des deux onglets
+    tab1, tab2 = st.tabs(["🛒 Liste par Ingrédients", "📖 Détail par Cocktail"])
 
-    for c in selection_cocktails:
-        recette = df_rec[df_rec['Cocktail'] == c]
-        for _, row in recette.iterrows():
-            ing = row['Ingrédient']
-            qty = row['Quantité'] * verres_par_type
-            unite = row['Unité']
-            
-            if ing in cumul_besoins:
-                cumul_besoins[ing]['quantite'] += qty
-            else:
-                cumul_besoins[ing] = {'quantite': qty, 'unite': unite}
-
-    # 3. AFFICHAGE DES BESOINS CUMULÉS
-    for nom_ing, data in cumul_besoins.items():
-        besoin_total = data['quantite']
-        unite = data['unite']
+    # --- VUE 1 : PAR INGRÉDIENTS (CUMULÉ POUR LES COURSES) ---
+    with tab1:
+        st.write(f"**Total à prévoir : {int(total_verres)} verres**")
         
-        st.subheader(f"{nom_ing} : {round(besoin_total, 1)} {unite}")
-        
-        # Formats disponibles
-        formats = df_form[df_form['Ingrédient'] == nom_ing]
-        
-        if not formats.empty:
-            ajuster = st.toggle(f"Ajuster {nom_ing}", key=f"tg_{nom_ing}")
-            total_selectionne = 0.0
-            
-            for i, (_, f) in enumerate(formats.iterrows()):
-                # Suggestion auto basée sur le premier format
-                suggestion = int(math.ceil(besoin_total / f['Contenance'])) if i == 0 else 0
-                
-                if ajuster:
-                    nb = st.slider(f"{f['Marque']} ({f['Contenance']}{unite})", 0, 200, suggestion, key=f"sld_{nom_ing}_{f['Marque']}")
+        # Calcul du cumul global
+        cumul_global = {}
+        for c in selection:
+            recette = df_rec[df_rec['Cocktail'] == c]
+            for _, row in recette.iterrows():
+                ing = row['Ingrédient']
+                qty = row['Quantité'] * verres_par_type
+                unite = row['Unité']
+                if ing in cumul_global:
+                    cumul_global[ing]['qty'] += qty
                 else:
-                    nb = suggestion
-                    st.write(f"🔹 {f['Marque']} : **{nb}**")
-                
-                total_selectionne += (nb * f['Contenance'])
+                    cumul_global[ing] = {'qty': qty, 'unite': unite}
+
+        for nom_ing, data in cumul_global.items():
+            besoin = data['qty']
+            unite = data['unite']
             
-            # Statut
-            diff = total_selectionne - besoin_total
-            if diff < 0:
-                st.error(f"Manque {abs(round(diff,1))} {unite}")
-            else:
-                st.success(f"OK (+{round(diff,1)} {unite})")
-        else:
-            st.warning("Aucun format disponible.")
-        
-        st.divider()
+            st.subheader(f"{nom_ing} ({round(besoin, 1)} {unite})")
+            
+            formats = df_form[df_form['Ingrédient'] == nom_ing]
+            total_sel = 0.0
+            
+            if not formats.empty:
+                ajuster = st.toggle(f"Ajuster {nom_ing}", key=f"tg_glob_{nom_ing}")
+                
+                for i, (_, f) in enumerate(formats.iterrows()):
+                    sugg = int(math.ceil(besoin / f['Contenance'])) if i == 0 else 0
+                    if ajuster:
+                        nb = st.slider(f"{f['Marque']} ({f['Contenance']}{unite})", 0, 200, sugg, key=f"sld_glob_{nom_ing}_{f['Marque']}")
+                    else:
+                        nb = sugg
+                        st.write(f"🔹 {f['Marque']} : **{nb}**")
+                    total_sel += (nb * f['Contenance'])
+                
+                # Statut
+                diff = total_sel - besoin
+                if diff < 0: st.error(f"Manque {abs(round(diff,1))} {unite}")
+                else: st.success(f"OK (+{round(diff,1)})")
+            st.divider()
+
+    # --- VUE 2 : PAR COCKTAIL (POUR LA PRÉPARATION) ---
+    with tab2:
+        st.write(f"**Répartition : {int(verres_par_type)} verres par cocktail**")
+        for c in selection:
+            with st.expander(f"Détail pour {c}", expanded=True):
+                recette = df_rec[df_rec['Cocktail'] == c]
+                for _, row in recette.iterrows():
+                    ing_c = row['Ingrédient']
+                    qty_c = row['Quantité'] * verres_par_type
+                    unite_c = row['Unité']
+                    
+                    # On affiche juste le besoin net ici pour ne pas alourdir
+                    st.write(f"📍 **{ing_c}** : {round(qty_c, 1)} {unite_c}")
+                    
+                    # Petit rappel du format principal pour info
+                    f_principal = df_form[df_form['Ingrédient'] == ing_c]
+                    if not f_principal.empty:
+                        f1 = f_principal.iloc[0]
+                        nb_f1 = math.ceil(qty_c / f1['Contenance'])
+                        st.caption(f"Soit environ {nb_f1} bouteilles de {f1['Marque']}")
 
 else:
-    st.warning("Veuillez sélectionner au moins un cocktail.")
-
-st.caption("Le calcul répartit équitablement le nombre de verres entre les cocktails choisis.")
+    st.warning("Choisissez au moins un cocktail pour voir les calculs.")
