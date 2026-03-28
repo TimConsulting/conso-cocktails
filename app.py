@@ -13,6 +13,11 @@ URL_FORMATS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1qyomUyOvg9AU5g
 def load_data():
     df_r = pd.read_csv(URL_RECETTES)
     df_f = pd.read_csv(URL_FORMATS)
+    
+    # NETTOYAGE CRUCIAL : On force les quantités en numérique, les erreurs deviennent NaN
+    df_r['Quantité'] = pd.to_numeric(df_r['Quantité'], errors='coerce').fillna(0)
+    df_f['Contenance'] = pd.to_numeric(df_f['Contenance'], errors='coerce').fillna(1) # 1 pour éviter division par 0
+    
     return df_r, df_f
 
 df_rec, df_form = load_data()
@@ -29,11 +34,10 @@ total_verres_evenement = 0
 
 if selection:
     st.write("---")
-    st.write("**Nombre de verres par personne (Entiers) :**")
+    st.write("**Nombre de verres par personne :**")
     cols = st.columns(len(selection))
     for i, c in enumerate(selection):
         with cols[i]:
-            # Step à 1 pour les verres entiers
             nb_v = st.number_input(f"{c}", min_value=0, value=1, step=1, key=f"nb_{c}")
             repartition[c] = nb_v * pax_total
             total_verres_evenement += repartition[c]
@@ -47,12 +51,15 @@ if selection:
         lignes = df_rec[df_rec['Cocktail'] == c]
         for _, row in lignes.iterrows():
             ing = row['Ingrédient']
-            qty = row['Quantité'] * verres_ce_cocktail
-            unite = row['Unité']
+            # Sécurité supplémentaire au cas où
+            qty_unit = float(row['Quantité']) if not pd.isna(row['Quantité']) else 0
+            qty_totale = qty_unit * verres_ce_cocktail
+            unite = str(row['Unité']) if not pd.isna(row['Unité']) else "unité"
+            
             if ing in cumul_global:
-                cumul_global[ing]['qty'] += qty
+                cumul_global[ing]['qty'] += qty_totale
             else:
-                cumul_global[ing] = {'qty': qty, 'unite': unite}
+                cumul_global[ing] = {'qty': qty_totale, 'unite': unite}
 
     tab1, tab2 = st.tabs(["🛒 Liste de Courses", "📖 Détail par Cocktail"])
 
@@ -61,29 +68,27 @@ if selection:
         stock_achete = {}
         
         for nom_ing, data in cumul_global.items():
-            besoin_net = data['qty']
-            unite = data['unite']
+            besoin_net = float(data['qty'])
+            unite = str(data['unite'])
             
-            # MISE EN VALEUR DU BESOIN
             st.markdown(f"### {nom_ing}")
+            # La ligne qui posait problème est maintenant protégée par le cast float() au dessus
             st.markdown(f"**BESOIN : `{round(besoin_net, 1)} {unite.upper()}`**")
             
             formats = df_form[df_form['Ingrédient'] == nom_ing]
             vol_ing_total = 0.0
             
             if not formats.empty:
-                # Affichage direct des number_input sans bouton Toggle
                 for i, (_, f) in enumerate(formats.iterrows()):
-                    # Calcul suggéré par défaut sur le premier format
-                    sugg = int(math.ceil(besoin_net / f['Contenance'])) if i == 0 else 0
+                    cont_f = float(f['Contenance']) if f['Contenance'] > 0 else 1.0
+                    sugg = int(math.ceil(besoin_net / cont_f)) if i == 0 else 0
                     
-                    # Saisie directe
                     nb = st.number_input(
-                        f"{f['Marque']} ({f['Contenance']}{unite})",
+                        f"{f['Marque']} ({cont_f}{unite})",
                         min_value=0, max_value=1000, value=sugg,
                         key=f"num_{nom_ing}_{f['Marque']}"
                     )
-                    vol_ing_total += (nb * f['Contenance'])
+                    vol_ing_total += (nb * cont_f)
                 
                 stock_achete[nom_ing] = vol_ing_total
                 
@@ -111,8 +116,8 @@ if selection:
                 
                 for _, row in lignes_c.iterrows():
                     ing_name = row['Ingrédient']
-                    qty_theo = row['Quantité'] * verres_prevus
-                    unite_name = row['Unité']
+                    qty_theo = float(row['Quantité']) * verres_prevus
+                    unite_name = str(row['Unité'])
                     
                     vol_total_dispo = stock_achete.get(ing_name, 0)
                     total_besoin_ing = cumul_global[ing_name]['qty']
