@@ -13,11 +13,9 @@ URL_FORMATS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1qyomUyOvg9AU5g
 def load_data():
     df_r = pd.read_csv(URL_RECETTES)
     df_f = pd.read_csv(URL_FORMATS)
-    
-    # NETTOYAGE CRUCIAL : On force les quantités en numérique, les erreurs deviennent NaN
+    # Nettoyage des données numériques
     df_r['Quantité'] = pd.to_numeric(df_r['Quantité'], errors='coerce').fillna(0)
-    df_f['Contenance'] = pd.to_numeric(df_f['Contenance'], errors='coerce').fillna(1) # 1 pour éviter division par 0
-    
+    df_f['Contenance'] = pd.to_numeric(df_f['Contenance'], errors='coerce').fillna(1)
     return df_r, df_f
 
 df_rec, df_form = load_data()
@@ -51,8 +49,7 @@ if selection:
         lignes = df_rec[df_rec['Cocktail'] == c]
         for _, row in lignes.iterrows():
             ing = row['Ingrédient']
-            # Sécurité supplémentaire au cas où
-            qty_unit = float(row['Quantité']) if not pd.isna(row['Quantité']) else 0
+            qty_unit = float(row['Quantité'])
             qty_totale = qty_unit * verres_ce_cocktail
             unite = str(row['Unité']) if not pd.isna(row['Unité']) else "unité"
             
@@ -72,7 +69,7 @@ if selection:
             unite = str(data['unite'])
             
             st.markdown(f"### {nom_ing}")
-            # La ligne qui posait problème est maintenant protégée par le cast float() au dessus
+            # Affichage simplifié du BESOIN en évidence
             st.markdown(f"**BESOIN : `{round(besoin_net, 1)} {unite.upper()}`**")
             
             formats = df_form[df_form['Ingrédient'] == nom_ing]
@@ -80,13 +77,14 @@ if selection:
             
             if not formats.empty:
                 for i, (_, f) in enumerate(formats.iterrows()):
-                    cont_f = float(f['Contenance']) if f['Contenance'] > 0 else 1.0
+                    cont_f = float(f['Contenance'])
                     sugg = int(math.ceil(besoin_net / cont_f)) if i == 0 else 0
                     
+                    # AJOUT DE L'INDEX 'i' DANS LA KEY POUR ÉVITER LE DOUBLON
                     nb = st.number_input(
                         f"{f['Marque']} ({cont_f}{unite})",
                         min_value=0, max_value=1000, value=sugg,
-                        key=f"num_{nom_ing}_{f['Marque']}"
+                        key=f"num_{nom_ing}_{f['Marque']}_{i}"
                     )
                     vol_ing_total += (nb * cont_f)
                 
@@ -112,7 +110,7 @@ if selection:
                 for _, r in lignes_c.iterrows():
                     st.write(f"▪️ {r['Quantité']} {r['Unité']} {r['Ingrédient']}")
                 
-                st.write("---")
+                st.divider()
                 
                 for _, row in lignes_c.iterrows():
                     ing_name = row['Ingrédient']
@@ -132,5 +130,4 @@ if selection:
 else:
     st.warning("Sélectionnez au moins un cocktail.")
 
-st.write("")
 st.caption("Application synchronisée avec Google Sheets.")
