@@ -18,77 +18,97 @@ df_rec, df_form = load_data()
 # --- INTERFACE ENTRÉE ---
 st.title("🍹 Cocktail Planner")
 
-col1, col2 = st.columns(2)
-with col1:
-    pax_total = st.number_input("Nombre d'invités", min_value=1, value=50, step=5)
-with col2:
-    ratio = st.number_input("Verres / personne", min_value=0.5, value=1.5, step=0.5)
+# 1. Nombre de PAX global
+pax_total = st.number_input("Nombre d'invités total", min_value=1, value=50, step=5)
 
-total_verres = pax_total * ratio
-nb_cocktails = len(st.session_state.get('multiselect', []))
-verres_txt = f"{int(total_verres/nb_cocktails)} par type" if nb_cocktails > 0 else "0"
-st.info(f"🎯 **Total à servir : {int(total_verres)} verres** ({verres_txt})")
-
+# 2. Sélection des cocktails
 options = sorted(df_rec['Cocktail'].unique())
-selection = st.multiselect("Cocktails à la carte", options, key="multiselect")
+selection = st.multiselect("Sélectionnez les cocktails", options)
+
+# 3. Saisie du nombre de verres PAR cocktail PAR personne
+repartition = {}
+total_verres_evenement = 0
 
 if selection:
-    verres_par_type = total_verres / len(selection)
-    
+    st.write("---")
+    st.write("**Combien de verres par personne pour chaque cocktail ?**")
+    cols = st.columns(len(selection))
+    for i, c in enumerate(selection):
+        with cols[i]:
+            nb_v = st.number_input(f"{c}", min_value=0.0, value=1.0, step=0.5, key=f"nb_{c}")
+            repartition[c] = nb_v * pax_total
+            total_verres_evenement += repartition[c]
+
+    st.info(f"🎯 **Total à servir : {int(total_verres_evenement)} verres au global**")
+    st.divider()
+
+    # --- CALCUL DES BESOINS GLOBAUX ---
+    cumul_global = {}
+    for c in selection:
+        verres_pour_ce_cocktail = repartition[c]
+        recette = df_rec[df_rec['Cocktail'] == c]
+        for _, row in recette.iterrows():
+            ing = row['Ingrédient']
+            qty = row['Quantité'] * verres_pour_ce_cocktail
+            unite = row['Unité']
+            if ing in cumul_global:
+                cumul_global[ing]['qty'] += qty
+            else:
+                cumul_global[ing] = {'qty': qty, 'unite': unite}
+
     tab1, tab2 = st.tabs(["🛒 Liste de Courses", "📖 Détail par Cocktail"])
 
     # --- VUE 1 : LISTE DE COURSES ---
     with tab1:
-        cumul_global = {}
-        for c in selection:
-            recette = df_rec[df_rec['Cocktail'] == c]
-            for _, row in recette.iterrows():
-                ing = row['Ingrédient']
-                qty = row['Quantité'] * verres_par_type
-                unite = row['Unité']
-                if ing in cumul_global:
-                    cumul_global[ing]['qty'] += qty
-                else:
-                    cumul_global[ing] = {'qty': qty, 'unite': unite}
-
+        stock_achete = {}
         for nom_ing, data in cumul_global.items():
             besoin = data['qty']
             unite = data['unite']
             st.subheader(f"{nom_ing} ({round(besoin, 1)} {unite})")
             
             formats = df_form[df_form['Ingrédient'] == nom_ing]
+            vol_ing_total = 0.0
             
             if not formats.empty:
                 ajuster = st.toggle(f"Modifier {nom_ing}", key=f"tg_glob_{nom_ing}")
                 for i, (_, f) in enumerate(formats.iterrows()):
                     sugg = int(math.ceil(besoin / f['Contenance'])) if i == 0 else 0
                     if ajuster:
-                        st.slider(f"{f['Marque']} ({f['Contenance']}{unite})", 0, 200, sugg, key=f"sld_glob_{nom_ing}_{f['Marque']}")
+                        nb = st.slider(f"{f['Marque']} ({f['Contenance']}{unite})", 0, 200, sugg, key=f"sld_glob_{nom_ing}_{f['Marque']}")
                     else:
-                        st.write(f"🔹 {f['Marque']} : **{sugg}**")
+                        nb = sugg
+                        st.write(f"🔹 {f['Marque']} : **{nb}**")
+                    vol_ing_total += (nb * f['Contenance'])
+                
+                stock_achete[nom_ing] = vol_ing_total
+                
+                diff = vol_ing_total - besoin
+                if diff < 0: st.error(f"Manque {abs(round(diff,1))} {unite}")
+                else: st.success(f"OK (+{round(diff,1)})")
             st.divider()
 
     # --- VUE 2 : DÉTAIL PAR COCKTAIL ---
     with tab2:
         for c in selection:
-            with st.expander(f"Détail pour {c}", expanded=True):
+            verres_prevus = repartition[c]
+            with st.expander(f"Détail pour {c} ({int(verres_prevus)} verres)", expanded=True):
                 recette = df_rec[df_rec['Cocktail'] == c]
                 for _, row in recette.iterrows():
                     ing_c = row['Ingrédient']
-                    qty_c = row['Quantité'] * verres_par_type
+                    qty_theo = row['Quantité'] * verres_prevus
                     unite_c = row['Unité']
                     
-                    st.write(f"📍 **{ing_c}**")
+                    # Synchronisation avec les achats de l'onglet 1
+                    vol_total_dispo = stock_achete.get(ing_c, qty_theo)
+                    # On calcule au prorata de l'importance de ce cocktail pour cet ingrédient
+                    ratio_poids = qty_theo / cumul_global[ing_c]['qty']
+                    part_dispo = vol_total_dispo * ratio_poids
                     
-                    # On cherche la marque correspondante
-                    f_info = df_form[df_form['Ingrédient'] == ing_c]
-                    if not f_info.empty:
-                        marque = f_info.iloc[0]['Marque']
-                        cont = f_info.iloc[0]['Contenance']
-                        st.markdown(f"Besoin : **{round(qty_c, 1)} {unite_c}**")
-                        st.caption(f"Utiliser : **{marque}** ({cont}{unite_c})")
-                    else:
-                        st.markdown(f"Besoin : **{round(qty_c, 1)} {unite_c}**")
+                    couleur = "green" if part_dispo >= (qty_theo - 0.1) else "red"
+                    
+                    st.write(f"📍 **{ing_c}**")
+                    st.markdown(f"Besoin : :{couleur}[**{round(part_dispo, 1)} {unite_c}**]")
+                    st.write("")
 
 else:
-    st.warning("Choisissez au moins un cocktail.")
+    st.warning("Veuillez sélectionner au moins un cocktail.")
