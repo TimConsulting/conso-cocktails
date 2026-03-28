@@ -88,19 +88,27 @@ if selection:
             verres_prevus = repartition[c]
             with st.expander(f"Détail pour {c} ({int(verres_prevus)} verres)", expanded=True):
                 
-                # --- NOUVEAU : BOUTON RECETTE ---
-                # On cherche la colonne 'Recette' ou 'Préparation' dans la première ligne du cocktail
-                infos_cocktail = df_rec[df_rec['Cocktail'] == c].iloc[0]
-                recette_texte = infos_cocktail.get('Recette', infos_cocktail.get('Préparation', 'Aucune instruction saisie.'))
+                # --- LOGIQUE RECETTE MULTI-LIGNES ---
+                # On récupère toutes les lignes du cocktail
+                lignes_cocktail = df_rec[df_rec['Cocktail'] == c]
                 
+                # On cherche la colonne Recette ou Préparation
+                col_recette = 'Recette' if 'Recette' in df_rec.columns else 'Préparation'
+                
+                if col_recette in df_rec.columns:
+                    # On récupère les textes uniques non vides de cette colonne pour ce cocktail
+                    instructions = lignes_cocktail[col_recette].dropna().unique()
+                    recette_complete = "\n\n".join(instructions) if len(instructions) > 0 else "Aucune instruction saisie."
+                else:
+                    recette_complete = "Colonne 'Recette' introuvable dans le Google Sheet."
+
                 if st.button(f"📖 Voir la recette du {c}", key=f"btn_rec_{c}"):
-                    st.info(f"**Méthode :** {recette_texte}")
+                    st.info(f"**Méthode de préparation :**\n\n{recette_complete}")
                 
                 st.write("---")
                 
                 # Liste des ingrédients
-                recette_moteur = df_rec[df_rec['Cocktail'] == c]
-                for _, row in recette_moteur.iterrows():
+                for _, row in lignes_cocktail.iterrows():
                     ing_c = row['Ingrédient']
                     qty_theo = row['Quantité'] * verres_prevus
                     unite_c = row['Unité']
