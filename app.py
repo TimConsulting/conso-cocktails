@@ -13,7 +13,7 @@ URL_FORMATS = "https://docs.google.com/spreadsheets/d/e/2PACX-1vT1qyomUyOvg9AU5g
 def load_data():
     df_r = pd.read_csv(URL_RECETTES)
     df_f = pd.read_csv(URL_FORMATS)
-    # Nettoyage des données numériques
+    # Nettoyage pour éviter les erreurs de type
     df_r['Quantité'] = pd.to_numeric(df_r['Quantité'], errors='coerce').fillna(0)
     df_f['Contenance'] = pd.to_numeric(df_f['Contenance'], errors='coerce').fillna(1)
     return df_r, df_f
@@ -32,10 +32,13 @@ total_verres_evenement = 0
 
 if selection:
     st.write("---")
+    # Modification du libellé demandée
     st.write("**Nombre de verres par personne :**")
+    
     cols = st.columns(len(selection))
     for i, c in enumerate(selection):
         with cols[i]:
+            # Step à 1 pour rester sur des nombres entiers de verres
             nb_v = st.number_input(f"{c}", min_value=0, value=1, step=1, key=f"nb_{c}")
             repartition[c] = nb_v * pax_total
             total_verres_evenement += repartition[c]
@@ -43,6 +46,7 @@ if selection:
     st.info(f"🎯 **Total à servir : {int(total_verres_evenement)} verres**")
     st.divider()
 
+    # --- CALCUL DES BESOINS GLOBAUX ---
     cumul_global = {}
     for c in selection:
         verres_ce_cocktail = repartition[c]
@@ -69,7 +73,6 @@ if selection:
             unite = str(data['unite'])
             
             st.markdown(f"### {nom_ing}")
-            # Affichage simplifié du BESOIN en évidence
             st.markdown(f"**BESOIN : `{round(besoin_net, 1)} {unite.upper()}`**")
             
             formats = df_form[df_form['Ingrédient'] == nom_ing]
@@ -80,11 +83,11 @@ if selection:
                     cont_f = float(f['Contenance'])
                     sugg = int(math.ceil(besoin_net / cont_f)) if i == 0 else 0
                     
-                    # AJOUT DE L'INDEX 'i' DANS LA KEY POUR ÉVITER LE DOUBLON
+                    # Key dynamique incluant 'sugg' pour forcer la mise à jour auto
                     nb = st.number_input(
                         f"{f['Marque']} ({cont_f}{unite})",
                         min_value=0, max_value=1000, value=sugg,
-                        key=f"num_{nom_ing}_{f['Marque']}_{i}"
+                        key=f"num_{nom_ing}_{f['Marque']}_{i}_{sugg}"
                     )
                     vol_ing_total += (nb * cont_f)
                 
@@ -128,6 +131,7 @@ if selection:
                     st.markdown(f"Besoin total : :{couleur}[**{round(part_dispo, 1)} {unite_name}**]")
 
 else:
-    st.warning("Sélectionnez au moins un cocktail.")
+    st.warning("Sélectionnez au moins un cocktail pour commencer.")
 
+st.write("")
 st.caption("Application synchronisée avec Google Sheets.")
