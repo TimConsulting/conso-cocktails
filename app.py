@@ -29,11 +29,11 @@ total_verres_evenement = 0
 
 if selection:
     st.write("---")
-    st.write("**Nombre de verres par personne (Entiers uniquement) :**")
+    st.write("**Nombre de verres par personne (Entiers) :**")
     cols = st.columns(len(selection))
     for i, c in enumerate(selection):
         with cols[i]:
-            # Step configuré à 1 pour éviter les demi-verres
+            # Step à 1 pour les verres entiers
             nb_v = st.number_input(f"{c}", min_value=0, value=1, step=1, key=f"nb_{c}")
             repartition[c] = nb_v * pax_total
             total_verres_evenement += repartition[c]
@@ -61,42 +61,36 @@ if selection:
         stock_achete = {}
         
         for nom_ing, data in cumul_global.items():
-            besoin = data['qty']
+            besoin_net = data['qty']
             unite = data['unite']
             
-            # MISE EN VALEUR DE L'UNITÉ ET DU BESOIN
+            # MISE EN VALEUR DU BESOIN
             st.markdown(f"### {nom_ing}")
-            st.markdown(f"**À ACHETER : `{round(besoin, 1)} {unite.upper()}`**")
+            st.markdown(f"**BESOIN : `{round(besoin_net, 1)} {unite.upper()}`**")
             
             formats = df_form[df_form['Ingrédient'] == nom_ing]
             vol_ing_total = 0.0
             
             if not formats.empty:
-                ajuster = st.toggle(f"Ajuster format/marque", key=f"tg_{nom_ing}")
-                
+                # Affichage direct des number_input sans bouton Toggle
                 for i, (_, f) in enumerate(formats.iterrows()):
-                    sugg = int(math.ceil(besoin / f['Contenance'])) if i == 0 else 0
+                    # Calcul suggéré par défaut sur le premier format
+                    sugg = int(math.ceil(besoin_net / f['Contenance'])) if i == 0 else 0
                     
-                    if ajuster:
-                        nb = st.number_input(
-                            f"{f['Marque']} ({f['Contenance']}{unite})",
-                            min_value=0, max_value=500, value=sugg,
-                            key=f"num_{nom_ing}_{f['Marque']}"
-                        )
-                    else:
-                        nb = sugg
-                        st.write(f"🔹 {f['Marque']} : **{nb}**")
-                    
+                    # Saisie directe
+                    nb = st.number_input(
+                        f"{f['Marque']} ({f['Contenance']}{unite})",
+                        min_value=0, max_value=1000, value=sugg,
+                        key=f"num_{nom_ing}_{f['Marque']}"
+                    )
                     vol_ing_total += (nb * f['Contenance'])
                 
                 stock_achete[nom_ing] = vol_ing_total
                 
-                diff = vol_ing_total - besoin
-                # STATUT MOINS IMPOSANT
+                diff = vol_ing_total - besoin_net
                 if diff < -0.01: 
                     st.error(f"⚠️ Manque {abs(round(diff,1))} {unite}")
                 else: 
-                    # Discret si c'est bon
                     st.caption(f"✅ Quantité couverte (Surplus : {round(diff,1)} {unite})")
             else:
                 st.warning("Aucun format défini.")
@@ -131,7 +125,7 @@ if selection:
                     st.markdown(f"Besoin total : :{couleur}[**{round(part_dispo, 1)} {unite_name}**]")
 
 else:
-    st.warning("Sélectionnez au moins un cocktail pour commencer.")
+    st.warning("Sélectionnez au moins un cocktail.")
 
 st.write("")
 st.caption("Application synchronisée avec Google Sheets.")
