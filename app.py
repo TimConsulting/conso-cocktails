@@ -18,20 +18,16 @@ df_rec, df_form = load_data()
 # --- INTERFACE ENTRÉE ---
 st.title("🍹 Cocktail Planner")
 
-# 1. Nombre de PAX global
 pax_total = st.number_input("Nombre d'invités total", min_value=1, value=50, step=5)
-
-# 2. Sélection des cocktails
 options = sorted(df_rec['Cocktail'].unique())
 selection = st.multiselect("Sélectionnez les cocktails", options)
 
-# 3. Saisie du nombre de verres PAR cocktail PAR personne
 repartition = {}
 total_verres_evenement = 0
 
 if selection:
     st.write("---")
-    st.write("**Combien de verres par personne pour chaque cocktail ?**")
+    st.write("**Nombre de verres par personne :**")
     cols = st.columns(len(selection))
     for i, c in enumerate(selection):
         with cols[i]:
@@ -39,15 +35,15 @@ if selection:
             repartition[c] = nb_v * pax_total
             total_verres_evenement += repartition[c]
 
-    st.info(f"🎯 **Total à servir : {int(total_verres_evenement)} verres au global**")
+    st.info(f"🎯 **Total à servir : {int(total_verres_evenement)} verres**")
     st.divider()
 
     # --- CALCUL DES BESOINS GLOBAUX ---
     cumul_global = {}
     for c in selection:
         verres_pour_ce_cocktail = repartition[c]
-        recette = df_rec[df_rec['Cocktail'] == c]
-        for _, row in recette.iterrows():
+        recette_data = df_rec[df_rec['Cocktail'] == c]
+        for _, row in recette_data.iterrows():
             ing = row['Ingrédient']
             qty = row['Quantité'] * verres_pour_ce_cocktail
             unite = row['Unité']
@@ -81,7 +77,6 @@ if selection:
                     vol_ing_total += (nb * f['Contenance'])
                 
                 stock_achete[nom_ing] = vol_ing_total
-                
                 diff = vol_ing_total - besoin
                 if diff < 0: st.error(f"Manque {abs(round(diff,1))} {unite}")
                 else: st.success(f"OK (+{round(diff,1)})")
@@ -92,20 +87,29 @@ if selection:
         for c in selection:
             verres_prevus = repartition[c]
             with st.expander(f"Détail pour {c} ({int(verres_prevus)} verres)", expanded=True):
-                recette = df_rec[df_rec['Cocktail'] == c]
-                for _, row in recette.iterrows():
+                
+                # --- NOUVEAU : BOUTON RECETTE ---
+                # On cherche la colonne 'Recette' ou 'Préparation' dans la première ligne du cocktail
+                infos_cocktail = df_rec[df_rec['Cocktail'] == c].iloc[0]
+                recette_texte = infos_cocktail.get('Recette', infos_cocktail.get('Préparation', 'Aucune instruction saisie.'))
+                
+                if st.button(f"📖 Voir la recette du {c}", key=f"btn_rec_{c}"):
+                    st.info(f"**Méthode :** {recette_texte}")
+                
+                st.write("---")
+                
+                # Liste des ingrédients
+                recette_moteur = df_rec[df_rec['Cocktail'] == c]
+                for _, row in recette_moteur.iterrows():
                     ing_c = row['Ingrédient']
                     qty_theo = row['Quantité'] * verres_prevus
                     unite_c = row['Unité']
                     
-                    # Synchronisation avec les achats de l'onglet 1
                     vol_total_dispo = stock_achete.get(ing_c, qty_theo)
-                    # On calcule au prorata de l'importance de ce cocktail pour cet ingrédient
                     ratio_poids = qty_theo / cumul_global[ing_c]['qty']
                     part_dispo = vol_total_dispo * ratio_poids
                     
                     couleur = "green" if part_dispo >= (qty_theo - 0.1) else "red"
-                    
                     st.write(f"📍 **{ing_c}**")
                     st.markdown(f"Besoin : :{couleur}[**{round(part_dispo, 1)} {unite_c}**]")
                     st.write("")
