@@ -5,16 +5,16 @@ import math
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Cocktail Planner", layout="centered")
 
-# --- CSS (DESIGN ÉPURÉ) ---
+# --- CSS (DESIGN ÉPURÉ & FIX AFFICHAGE) ---
 st.markdown("""
     <style>
     .stApp { background-color: #F7F9FB; }
     .ing-card {
         background-color: white;
         border-radius: 15px;
-        padding: 20px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        padding: 18px;
+        margin-bottom: 15px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05);
         border: 1px solid #E0E0E0;
     }
     .ing-title {
@@ -24,7 +24,7 @@ st.markdown("""
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 10px;
+        margin-bottom: 12px;
     }
     .qty-badge {
         background-color: #F0F2F6;
@@ -34,9 +34,26 @@ st.markdown("""
         font-size: 0.85rem;
         font-weight: 600;
     }
-    .status-msg { font-size: 0.9rem; font-weight: 600; margin-top: 10px; }
-    .status-missing { color: #FF4B4B; }
-    .status-ok { color: #28A745; }
+    /* Style pour les lignes de bouteilles hors mode ajustement */
+    .bottle-line {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px 0;
+        border-bottom: 1px dashed #EEE;
+        font-size: 0.95rem;
+    }
+    .bottle-name { color: #555; }
+    .bottle-count { 
+        font-weight: 700; 
+        color: #FF4B4B; 
+        background: #FFF0F0;
+        padding: 2px 8px;
+        border-radius: 5px;
+    }
+    .status-msg { font-size: 0.85rem; font-weight: 600; margin-top: 12px; padding-top: 8px; }
+    .status-missing { color: #FF4B4B; border-top: 1px solid #FFE0E0; }
+    .status-ok { color: #28A745; border-top: 1px solid #E0FFE0; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -68,40 +85,41 @@ for _, row in ingredients.iterrows():
     besoin_total = row['Quantité'] * pax
     unite = row['Unité']
     
-    # Carte Ingrédient
     st.markdown(f'<div class="ing-card"><div class="ing-title"><span>{nom_ing}</span><span class="qty-badge">{besoin_total} {unite}</span></div>', unsafe_allow_html=True)
     
     formats = df_form[df_form['Ingrédient'] == nom_ing]
     total_selectionne = 0.0
     
     if not formats.empty:
-        # Case à cocher pour activer les sliders
-        ajuster = st.checkbox(f"Ajuster {nom_ing}", key=f"check_{nom_ing}")
+        # Checkbox plus discret
+        ajuster = st.toggle(f"Modifier les quantités", key=f"tg_{nom_ing}")
         
         for i, (_, f) in enumerate(formats.iterrows()):
-            # Calcul automatique suggéré (seulement sur le premier format par défaut)
             suggestion = int(math.ceil(besoin_total / f['Contenance'])) if i == 0 else 0
             
             if ajuster:
-                # Si on ajuste, on affiche le slider (max 200)
                 nb = st.slider(
                     f"{f['Marque']} ({f['Contenance']}{unite})",
                     0, 200, suggestion,
-                    key=f"slider_{nom_ing}_{f['Marque']}"
+                    key=f"sld_{nom_ing}_{f['Marque']}"
                 )
             else:
-                # Si on n'ajuste pas, on prend la suggestion automatique
                 nb = suggestion
-                st.markdown(f"🔹 {f['Marque']} : **{nb}**")
+                # Affichage en ligne propre pour éviter les coupures
+                st.markdown(f"""
+                    <div class="bottle-line">
+                        <span class="bottle-name">🔹 {f['Marque']} ({f['Contenance']}{unite})</span>
+                        <span class="bottle-count">{nb}</span>
+                    </div>
+                """, unsafe_allow_html=True)
             
             total_selectionne += (nb * f['Contenance'])
         
-        # Feedback visuel
         diff = total_selectionne - besoin_total
         if diff < 0:
-            st.markdown(f'<div class="status-msg status-missing">⚠️ Manque {abs(round(diff,2))} {unite}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="status-msg status-missing">❌ Manque {abs(round(diff,1))} {unite}</div>', unsafe_allow_html=True)
         else:
-            st.markdown(f'<div class="status-msg status-ok">✅ OK (Surplus {round(diff,2)} {unite})</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="status-msg status-ok">✅ OK (Reste {round(diff,1)} {unite})</div>', unsafe_allow_html=True)
     else:
         st.warning("Aucun format disponible.")
     
