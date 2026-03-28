@@ -41,11 +41,11 @@ if selection:
     # --- CALCUL DES BESOINS GLOBAUX ---
     cumul_global = {}
     for c in selection:
-        verres_pour_ce_cocktail = repartition[c]
-        recette_data = df_rec[df_rec['Cocktail'] == c]
-        for _, row in recette_data.iterrows():
+        verres_ce_cocktail = repartition[c]
+        lignes = df_rec[df_rec['Cocktail'] == c]
+        for _, row in lignes.iterrows():
             ing = row['Ingrédient']
-            qty = row['Quantité'] * verres_pour_ce_cocktail
+            qty = row['Quantité'] * verres_ce_cocktail
             unite = row['Unité']
             if ing in cumul_global:
                 cumul_global[ing]['qty'] += qty
@@ -66,11 +66,11 @@ if selection:
             vol_ing_total = 0.0
             
             if not formats.empty:
-                ajuster = st.toggle(f"Modifier {nom_ing}", key=f"tg_glob_{nom_ing}")
+                ajuster = st.toggle(f"Modifier {nom_ing}", key=f"tg_{nom_ing}")
                 for i, (_, f) in enumerate(formats.iterrows()):
                     sugg = int(math.ceil(besoin / f['Contenance'])) if i == 0 else 0
                     if ajuster:
-                        nb = st.slider(f"{f['Marque']} ({f['Contenance']}{unite})", 0, 200, sugg, key=f"sld_glob_{nom_ing}_{f['Marque']}")
+                        nb = st.slider(f"{f['Marque']} ({f['Contenance']}{unite})", 0, 200, sugg, key=f"sld_{nom_ing}_{f['Marque']}")
                     else:
                         nb = sugg
                         st.write(f"🔹 {f['Marque']} : **{nb}**")
@@ -82,45 +82,36 @@ if selection:
                 else: st.success(f"OK (+{round(diff,1)})")
             st.divider()
 
-    # --- VUE 2 : DÉTAIL PAR COCKTAIL ---
+    # --- VUE 2 : DÉTAIL PAR COCKTAIL (SYNCHRONISÉE) ---
     with tab2:
         for c in selection:
             verres_prevus = repartition[c]
             with st.expander(f"Détail pour {c} ({int(verres_prevus)} verres)", expanded=True):
                 
-                # --- LOGIQUE RECETTE MULTI-LIGNES ---
-                # On récupère toutes les lignes du cocktail
-                lignes_cocktail = df_rec[df_rec['Cocktail'] == c]
-                
-                # On cherche la colonne Recette ou Préparation
-                col_recette = 'Recette' if 'Recette' in df_rec.columns else 'Préparation'
-                
-                if col_recette in df_rec.columns:
-                    # On récupère les textes uniques non vides de cette colonne pour ce cocktail
-                    instructions = lignes_cocktail[col_recette].dropna().unique()
-                    recette_complete = "\n\n".join(instructions) if len(instructions) > 0 else "Aucune instruction saisie."
-                else:
-                    recette_complete = "Colonne 'Recette' introuvable dans le Google Sheet."
-
-                if st.button(f"📖 Voir la recette du {c}", key=f"btn_rec_{c}"):
-                    st.info(f"**Méthode de préparation :**\n\n{recette_complete}")
+                # --- AFFICHAGE DE LA COMPOSITION (LA "RECETTE") ---
+                st.write("**Composition pour 1 verre :**")
+                lignes_c = df_rec[df_rec['Cocktail'] == c]
+                composition_txt = ""
+                for _, r in lignes_c.iterrows():
+                    composition_txt += f"- {r['Quantité']} {r['Unité']} de {r['Ingrédient']}\n"
+                st.info(composition_txt)
                 
                 st.write("---")
                 
-                # Liste des ingrédients
-                for _, row in lignes_cocktail.iterrows():
-                    ing_c = row['Ingrédient']
+                # --- CALCUL DES BESOINS POUR LE TOTAL DE VERRES ---
+                for _, row in lignes_c.iterrows():
+                    ing_name = row['Ingrédient']
                     qty_theo = row['Quantité'] * verres_prevus
-                    unite_c = row['Unité']
+                    unite_name = row['Unité']
                     
-                    vol_total_dispo = stock_achete.get(ing_c, qty_theo)
-                    ratio_poids = qty_theo / cumul_global[ing_c]['qty']
+                    # Récupération du stock de l'onglet 1
+                    vol_total_dispo = stock_achete.get(ing_name, qty_theo)
+                    ratio_poids = qty_theo / cumul_global[ing_name]['qty']
                     part_dispo = vol_total_dispo * ratio_poids
                     
                     couleur = "green" if part_dispo >= (qty_theo - 0.1) else "red"
-                    st.write(f"📍 **{ing_c}**")
-                    st.markdown(f"Besoin : :{couleur}[**{round(part_dispo, 1)} {unite_c}**]")
-                    st.write("")
+                    st.write(f"📍 **{ing_name}**")
+                    st.markdown(f"Besoin total : :{couleur}[**{round(part_dispo, 1)} {unite_name}**]")
 
 else:
-    st.warning("Veuillez sélectionner au moins un cocktail.")
+    st.warning("Choisissez au moins un cocktail.")
